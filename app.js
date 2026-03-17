@@ -12,7 +12,7 @@
     let isPlaying = false;
     let playInterval = null;
     let playSpeed = 800;
-    let map, countryMarkers = [], geoJsonLayer = null;
+    let map, geoJsonLayer = null, geoJsonData = null, labelsPane = null;
     let chartEnergyMix, chartCO2, chartInvestment;
 
     // ===== DOM REFS =====
@@ -28,12 +28,36 @@
     const speedSelect = $('#speedSelect');
     const layerBtns = $$('.map-layer-btn');
 
+    // ===== ISO A3 MAPPING =====
+    // Maps GeoJSON property names to our DATA country codes
+    // Natural Earth GeoJSON uses ISO_A3 or ISO_A3_EH
+    const geoJsonToCode = {
+        'USA': 'USA', 'CHN': 'CHN', 'IND': 'IND', 'DEU': 'DEU',
+        'GBR': 'GBR', 'FRA': 'FRA', 'BRA': 'BRA', 'JPN': 'JPN',
+        'CAN': 'CAN', 'AUS': 'AUS', 'KOR': 'KOR', 'RUS': 'RUS',
+        'ZAF': 'ZAF', 'SAU': 'SAU', 'IDN': 'IDN', 'MEX': 'MEX',
+        'TUR': 'TUR', 'NOR': 'NOR', 'SWE': 'SWE', 'DNK': 'DNK',
+        'NLD': 'NLD', 'ESP': 'ESP', 'ITA': 'ITA', 'POL': 'POL',
+        'EGY': 'EGY', 'NGA': 'NGA', 'KEN': 'KEN', 'CHL': 'CHL',
+        'ARG': 'ARG', 'COL': 'COL', 'ARE': 'ARE', 'THA': 'THA',
+        'VNM': 'VNM', 'PHL': 'PHL', 'MYS': 'MYS', 'PAK': 'PAK',
+        'BGD': 'BGD', 'ETH': 'ETH', 'MAR': 'MAR', 'ISR': 'ISR',
+        'NZL': 'NZL', 'PRT': 'PRT', 'GRC': 'GRC', 'AUT': 'AUT',
+        'CHE': 'CHE', 'FIN': 'FIN', 'UKR': 'UKR', 'IRN': 'IRN',
+        'IRQ': 'IRQ', 'PER': 'PER', 'CRI': 'CRI', 'ISL': 'ISL',
+        'URY': 'URY',
+        // Alternate codes used by some GeoJSON sources
+        'US': 'USA', 'CN': 'CHN', 'IN': 'IND', 'DE': 'DEU',
+        'GB': 'GBR', 'FR': 'FRA', 'BR': 'BRA', 'JP': 'JPN',
+        'CA': 'CAN', 'AU': 'AUS', 'KR': 'KOR', 'RU': 'RUS',
+    };
+
     // ===== INIT =====
     function init() {
         initMap();
         initCharts();
         bindEvents();
-        update();
+        loadGeoJson();
     }
 
     // ===== MAP =====
@@ -55,52 +79,122 @@
             maxZoom: 19,
         }).addTo(map);
 
-        // Labels on top
+        // Create a pane for labels above the GeoJSON
+        labelsPane = map.createPane('labelsPane');
+        labelsPane.style.zIndex = 450;
+        labelsPane.style.pointerEvents = 'none';
+
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
             subdomains: 'abcd',
             maxZoom: 19,
-            pane: 'shadowPane',
+            pane: 'labelsPane',
         }).addTo(map);
     }
 
-    function updateMapMarkers() {
-        // Remove existing markers
-        countryMarkers.forEach(m => map.removeLayer(m));
-        countryMarkers = [];
+    function loadGeoJson() {
+        // Fetch world country boundaries (Natural Earth 110m simplified)
+        fetch('https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson')
+            .then(r => r.json())
+            .then(data => {
+                geoJsonData = data;
+                update();
+            })
+            .catch(() => {
+                // Fallback: try alternate source
+                fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json')
+                    .then(r => r.json())
+                    .then(topoData => {
+                        // Convert TopoJSON to GeoJSON
+                        if (window.topojson) {
+                            geoJsonData = topojson.feature(topoData, topoData.objects.countries);
+                        }
+                        update();
+                    })
+                    .catch(() => {
+                        console.warn('Could not load country boundaries');
+                        update();
+                    });
+            });
+    }
+
+    function getCountryCode(feature) {
+        // Try multiple property names used by different GeoJSON sources
+        const props = feature.properties;
+        const candidates = [
+            props.ISO_A3, props.ISO_A3_EH, props.iso_a3,
+            props.ISO3, props.iso3, props.ADM0_A3,
+            props.adm0_a3, props.ISO_A2, props.iso_a2,
+        ];
+        for (const c of candidates) {
+            if (c && geoJsonToCode[c]) return geoJsonToCode[c];
+        }
+        // Try matching by name
+        const name = (props.ADMIN || props.name || props.NAME || '').toLowerCase();
+        for (const [code, base] of Object.entries(DATA.countryBase2025)) {
+            if (base.name.toLowerCase() === name) return code;
+        }
+        return null;
+    }
+
+    function updateChoropleth() {
+        if (!geoJsonData) return;
+
+        // Remove existing layer
+        if (geoJsonLayer) {
+            map.removeLayer(geoJsonLayer);
+        }
 
         const countries = DATA.getCountryData(currentYear, currentScenario);
 
-        for (const [code, data] of Object.entries(countries)) {
-            const value = getLayerValue(data);
-            const color = getLayerColor(value);
-            const radius = getMarkerRadius(code);
+        geoJsonLayer = L.geoJSON(geoJsonData, {
+            style: function (feature) {
+                const code = getCountryCode(feature);
+                if (!code || !countries[code]) {
+                    // Country not in our dataset — dark/neutral
+                    return {
+                        fillColor: '#1a2236',
+                        fillOpacity: 0.4,
+                        color: '#2a3a5c',
+                        weight: 0.8,
+                        opacity: 0.6,
+                    };
+                }
+                const data = countries[code];
+                const value = getLayerValue(data);
+                const color = getLayerColor(value);
+                return {
+                    fillColor: color,
+                    fillOpacity: 0.7,
+                    color: '#0a0e17',
+                    weight: 1,
+                    opacity: 0.9,
+                };
+            },
+            onEachFeature: function (feature, layer) {
+                const code = getCountryCode(feature);
+                if (!code || !countries[code]) return;
 
-            const marker = L.circleMarker([data.lat, data.lng], {
-                radius: radius,
-                fillColor: color,
-                color: color,
-                weight: 1.5,
-                opacity: 0.9,
-                fillOpacity: 0.6,
-            }).addTo(map);
+                const data = countries[code];
+                layer.bindPopup(createPopupContent(code, data), {
+                    maxWidth: 280,
+                    className: 'dark-popup',
+                });
 
-            marker.bindPopup(createPopupContent(code, data), {
-                maxWidth: 280,
-                className: 'dark-popup',
-            });
-
-            // Hover effect
-            marker.on('mouseover', function () {
-                this.setStyle({ fillOpacity: 0.85, weight: 2.5, radius: radius + 2 });
-                this.openPopup();
-            });
-            marker.on('mouseout', function () {
-                this.setStyle({ fillOpacity: 0.6, weight: 1.5, radius: radius });
-                this.closePopup();
-            });
-
-            countryMarkers.push(marker);
-        }
+                layer.on('mouseover', function (e) {
+                    this.setStyle({
+                        fillOpacity: 0.9,
+                        weight: 2,
+                        color: '#f1f5f9',
+                    });
+                    this.bringToFront();
+                    this.openPopup();
+                });
+                layer.on('mouseout', function (e) {
+                    geoJsonLayer.resetStyle(this);
+                    this.closePopup();
+                });
+            },
+        }).addTo(map);
     }
 
     function getLayerValue(data) {
@@ -115,56 +209,57 @@
 
     function getLayerColor(value) {
         switch (currentLayer) {
-            case 'renewable':
-                return renewableColor(value);
-            case 'emissions':
-                return emissionsColor(value);
-            case 'temperature':
-                return temperatureColor(value);
-            case 'air':
-                return airQualityColor(value);
-            default:
-                return renewableColor(value);
+            case 'renewable': return renewableColor(value);
+            case 'emissions': return emissionsColor(value);
+            case 'temperature': return temperatureColor(value);
+            case 'air': return airQualityColor(value);
+            default: return renewableColor(value);
         }
     }
 
+    // Smooth gradient color functions using HSL interpolation
     function renewableColor(pct) {
-        if (pct >= 80) return '#22c55e';
+        // 0% = red (hue 0), 100% = green (hue 142)
+        // Using multi-stop for a nice gradient feel
+        if (pct >= 90) return '#15803d'; // deep green
+        if (pct >= 75) return '#22c55e';
         if (pct >= 60) return '#84cc16';
-        if (pct >= 40) return '#eab308';
-        if (pct >= 20) return '#f97316';
-        return '#ef4444';
+        if (pct >= 45) return '#a3e635';
+        if (pct >= 35) return '#eab308';
+        if (pct >= 25) return '#f59e0b';
+        if (pct >= 15) return '#f97316';
+        if (pct >= 5)  return '#ef4444';
+        return '#991b1b';
     }
 
     function emissionsColor(mt) {
-        if (mt <= 50) return '#22c55e';
-        if (mt <= 200) return '#84cc16';
-        if (mt <= 500) return '#eab308';
-        if (mt <= 2000) return '#f97316';
-        return '#ef4444';
+        if (mt <= 20)   return '#15803d';
+        if (mt <= 50)   return '#22c55e';
+        if (mt <= 100)  return '#84cc16';
+        if (mt <= 300)  return '#eab308';
+        if (mt <= 600)  return '#f59e0b';
+        if (mt <= 1000) return '#f97316';
+        if (mt <= 3000) return '#ef4444';
+        return '#991b1b';
     }
 
     function temperatureColor(temp) {
-        if (temp <= 1.5) return '#22c55e';
-        if (temp <= 1.7) return '#eab308';
-        if (temp <= 2.0) return '#f97316';
+        if (temp <= 1.4) return '#22c55e';
+        if (temp <= 1.5) return '#84cc16';
+        if (temp <= 1.6) return '#eab308';
+        if (temp <= 1.8) return '#f97316';
         return '#ef4444';
     }
 
     function airQualityColor(pm25) {
-        if (pm25 <= 5) return '#22c55e';
-        if (pm25 <= 10) return '#84cc16';
+        if (pm25 <= 5)  return '#15803d';
+        if (pm25 <= 10) return '#22c55e';
+        if (pm25 <= 15) return '#84cc16';
         if (pm25 <= 25) return '#eab308';
+        if (pm25 <= 35) return '#f59e0b';
         if (pm25 <= 50) return '#f97316';
-        return '#ef4444';
-    }
-
-    function getMarkerRadius(code) {
-        const large = ['CHN', 'USA', 'IND', 'RUS', 'BRA'];
-        const medium = ['CAN', 'AUS', 'DEU', 'GBR', 'FRA', 'JPN', 'KOR', 'IDN', 'MEX', 'SAU', 'ZAF'];
-        if (large.includes(code)) return 14;
-        if (medium.includes(code)) return 10;
-        return 7;
+        if (pm25 <= 70) return '#ef4444';
+        return '#991b1b';
     }
 
     function createPopupContent(code, data) {
@@ -200,22 +295,22 @@
         switch (currentLayer) {
             case 'renewable':
                 legend.querySelector('h4').textContent = 'Renewable Energy Share (%)';
-                bar.style.background = 'linear-gradient(to right, #ef4444, #f97316, #eab308, #84cc16, #22c55e)';
+                bar.style.background = 'linear-gradient(to right, #991b1b, #ef4444, #f97316, #eab308, #a3e635, #84cc16, #22c55e, #15803d)';
                 labels.innerHTML = '<span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>';
                 break;
             case 'emissions':
                 legend.querySelector('h4').textContent = 'CO₂ Emissions (Mt/year)';
-                bar.style.background = 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444)';
-                labels.innerHTML = '<span>0</span><span>500</span><span>2,000</span><span>5,000</span><span>10,000+</span>';
+                bar.style.background = 'linear-gradient(to right, #15803d, #22c55e, #84cc16, #eab308, #f59e0b, #f97316, #ef4444, #991b1b)';
+                labels.innerHTML = '<span>0</span><span>100</span><span>500</span><span>2,000</span><span>10,000+</span>';
                 break;
             case 'temperature':
                 legend.querySelector('h4').textContent = 'Temperature Anomaly (°C)';
-                bar.style.background = 'linear-gradient(to right, #22c55e, #eab308, #f97316, #ef4444)';
+                bar.style.background = 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444)';
                 labels.innerHTML = '<span>+1.0</span><span>+1.5</span><span>+1.7</span><span>+2.0</span><span>+2.5</span>';
                 break;
             case 'air':
                 legend.querySelector('h4').textContent = 'Air Quality — PM2.5 (µg/m³)';
-                bar.style.background = 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #f97316, #ef4444)';
+                bar.style.background = 'linear-gradient(to right, #15803d, #22c55e, #84cc16, #eab308, #f59e0b, #f97316, #ef4444, #991b1b)';
                 labels.innerHTML = '<span>0</span><span>10</span><span>25</span><span>50</span><span>75+</span>';
                 break;
         }
@@ -352,7 +447,6 @@
                         borderWidth: 1,
                         callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} Gt CO₂` },
                     },
-                    annotation: undefined,
                 },
             },
         });
@@ -432,14 +526,12 @@
         chartInvestment.data.datasets[0].backgroundColor = invColors;
         chartInvestment.update('none');
 
-        // Draw current year indicator on charts
         drawYearIndicator();
     }
 
     function drawYearIndicator() {
         const yearIdx = currentYear - 2025;
 
-        // Add vertical line plugin for year indicator
         const plugin = {
             id: 'yearLine',
             afterDraw(chart) {
@@ -461,7 +553,6 @@
             },
         };
 
-        // Register plugin on each chart (replace if exists)
         [chartEnergyMix, chartCO2, chartInvestment].forEach(chart => {
             chart.config.plugins = chart.config.plugins || [];
             chart.config.plugins = chart.config.plugins.filter(p => p.id !== 'yearLine');
@@ -475,7 +566,7 @@
         yearDisplay.textContent = currentYear;
         yearSlider.value = currentYear;
         updateKPIs();
-        updateMapMarkers();
+        updateChoropleth();
         updateLegend();
         updateCharts();
     }
@@ -546,7 +637,7 @@
                 layerBtns.forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 currentLayer = btn.dataset.layer;
-                updateMapMarkers();
+                updateChoropleth();
                 updateLegend();
             });
         });
