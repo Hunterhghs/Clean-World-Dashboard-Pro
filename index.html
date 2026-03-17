@@ -168,6 +168,84 @@
         </aside>
     </main>
 
+    <!-- Mobile Tab Bar (hidden on desktop) -->
+    <nav class="mobile-tabs" id="mobileTabs">
+        <button class="mobile-tab active" data-panel="map">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg>
+            <span>Map</span>
+        </button>
+        <button class="mobile-tab" data-panel="kpis">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            <span>Indicators</span>
+        </button>
+        <button class="mobile-tab" data-panel="charts">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-2-2-4 4"/></svg>
+            <span>Charts</span>
+        </button>
+        <button class="mobile-tab" data-panel="settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>Settings</span>
+        </button>
+    </nav>
+
+    <!-- Mobile Panels (hidden on desktop, shown when tabs selected) -->
+    <div class="mobile-panel" id="mobileKpis">
+        <div class="mobile-panel-header">
+            <h2>Global Indicators</h2>
+            <button class="mobile-panel-close" data-close="kpis">&times;</button>
+        </div>
+        <div class="mobile-kpi-grid" id="mobileKpiGrid">
+            <!-- Filled by JS -->
+        </div>
+    </div>
+    <div class="mobile-panel" id="mobileCharts">
+        <div class="mobile-panel-header">
+            <h2>Projections</h2>
+            <button class="mobile-panel-close" data-close="charts">&times;</button>
+        </div>
+        <div class="mobile-chart-stack" id="mobileChartStack">
+            <!-- Filled by JS (cloned canvases won't work; we scroll to the real ones) -->
+        </div>
+    </div>
+    <div class="mobile-panel" id="mobileSettings">
+        <div class="mobile-panel-header">
+            <h2>Settings</h2>
+            <button class="mobile-panel-close" data-close="settings">&times;</button>
+        </div>
+        <div class="mobile-settings-content">
+            <div class="mobile-setting-row">
+                <label>Scenario</label>
+                <select id="scenarioSelectMobile">
+                    <option value="stated">Stated Policies (STEPS)</option>
+                    <option value="announced">Announced Pledges (APS)</option>
+                    <option value="netzero" selected>Net Zero 2050 (NZE)</option>
+                </select>
+            </div>
+            <div class="mobile-setting-row">
+                <label>Playback Speed</label>
+                <select id="speedSelectMobile">
+                    <option value="1500">0.5x</option>
+                    <option value="800" selected>1x</option>
+                    <option value="400">2x</option>
+                    <option value="200">4x</option>
+                </select>
+            </div>
+            <div class="mobile-setting-row">
+                <label>Map Layer</label>
+                <div class="mobile-layer-btns">
+                    <button class="mobile-layer-btn active" data-layer="renewable">Renewables</button>
+                    <button class="mobile-layer-btn" data-layer="emissions">Emissions</button>
+                    <button class="mobile-layer-btn" data-layer="temperature">Temp</button>
+                    <button class="mobile-layer-btn" data-layer="air">Air Quality</button>
+                </div>
+            </div>
+            <div class="mobile-setting-row data-badge-row">
+                <span class="pulse"></span>
+                <span>IEA / IRENA / IPCC Data Sources</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Timeline Slider -->
     <footer class="timeline-bar">
         <div class="timeline-content">

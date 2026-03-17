@@ -65,20 +65,29 @@
         initMap();
         initCharts();
         bindEvents();
+        initMobile();
         loadGeoJson();
     }
 
     // ===== MAP =====
     function initMap() {
+        const mobile = isMobile();
         map = L.map('map', {
-            center: [25, 10],
-            zoom: 2.5,
-            minZoom: 2,
+            center: mobile ? [20, 0] : [25, 10],
+            zoom: mobile ? 1.8 : 2.5,
+            minZoom: mobile ? 1 : 2,
             maxZoom: 6,
-            zoomControl: true,
+            zoomControl: !mobile,
             attributionControl: true,
             worldCopyJump: true,
+            tap: true,
+            tapTolerance: 15,
         });
+
+        // Add zoom control to top-right on mobile for less interference
+        if (mobile) {
+            L.control.zoom({ position: 'topright' }).addTo(map);
+        }
 
         // Dark tile layer
         L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
@@ -249,19 +258,36 @@
                     className: 'dark-popup',
                 });
 
-                layer.on('mouseover', function (e) {
-                    this.setStyle({
-                        fillOpacity: 0.9,
-                        weight: 2,
-                        color: '#f1f5f9',
+                if (isMobile()) {
+                    // Mobile: tap to open popup, stays open
+                    layer.on('click', function (e) {
+                        // Reset all styles first
+                        geoJsonLayer.eachLayer(l => geoJsonLayer.resetStyle(l));
+                        this.setStyle({
+                            fillOpacity: 0.9,
+                            weight: 2,
+                            color: '#f1f5f9',
+                        });
+                        this.bringToFront();
+                        this.openPopup();
+                        L.DomEvent.stopPropagation(e);
                     });
-                    this.bringToFront();
-                    this.openPopup();
-                });
-                layer.on('mouseout', function (e) {
-                    geoJsonLayer.resetStyle(this);
-                    this.closePopup();
-                });
+                } else {
+                    // Desktop: hover
+                    layer.on('mouseover', function (e) {
+                        this.setStyle({
+                            fillOpacity: 0.9,
+                            weight: 2,
+                            color: '#f1f5f9',
+                        });
+                        this.bringToFront();
+                        this.openPopup();
+                    });
+                    layer.on('mouseout', function (e) {
+                        geoJsonLayer.resetStyle(this);
+                        this.closePopup();
+                    });
+                }
             },
         }).addTo(map);
     }
@@ -638,6 +664,8 @@
         updateChoropleth();
         updateLegend();
         updateCharts();
+        updateMobileKPIs();
+        updateMobileCharts();
     }
 
     // ===== PLAYBACK =====
@@ -678,6 +706,316 @@
         }
     }
 
+    // ===== MOBILE =====
+    const isMobile = () => window.innerWidth <= 768;
+
+    // Mobile chart instances (separate canvases)
+    let mChartEnergyMix, mChartCO2, mChartInvestment;
+
+    function initMobile() {
+        if (!isMobile()) return;
+
+        // Build mobile KPI cards
+        buildMobileKPIs();
+        buildMobileCharts();
+        bindMobileEvents();
+    }
+
+    function buildMobileKPIs() {
+        const grid = document.getElementById('mobileKpiGrid');
+        if (!grid) return;
+        grid.innerHTML = `
+            <div class="mobile-kpi-card" data-metric="renewableShare">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></div>
+                    <span class="mkpi-label">Renewable Energy</span>
+                </div>
+                <span class="mkpi-value" id="mkpiRenewable">30%</span>
+                <span class="mkpi-delta positive" id="mkpiRenewableDelta">+2.1% from 2024</span>
+            </div>
+            <div class="mobile-kpi-card" data-metric="co2">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg></div>
+                    <span class="mkpi-label">CO₂ Emissions</span>
+                </div>
+                <span class="mkpi-value" id="mkpiCO2">36.8 Gt</span>
+                <span class="mkpi-delta negative" id="mkpiCO2Delta">-0.4 Gt from 2024</span>
+            </div>
+            <div class="mobile-kpi-card" data-metric="temperature">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg></div>
+                    <span class="mkpi-label">Temp Anomaly</span>
+                </div>
+                <span class="mkpi-value" id="mkpiTemp">+1.45°C</span>
+                <span class="mkpi-delta negative" id="mkpiTempDelta">vs pre-industrial</span>
+            </div>
+            <div class="mobile-kpi-card" data-metric="evCapital">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="12" rx="2"/><path d="M23 10h1v4h-1"/><path d="M7 12h4M9 10v4"/></svg></div>
+                    <span class="mkpi-label">EV Market Share</span>
+                </div>
+                <span class="mkpi-value" id="mkpiEV">22%</span>
+                <span class="mkpi-delta positive" id="mkpiEVDelta">+4% from 2024</span>
+            </div>
+            <div class="mobile-kpi-card" data-metric="cleanInvestment">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+                    <span class="mkpi-label">Clean Investment</span>
+                </div>
+                <span class="mkpi-value" id="mkpiInvest">$1.8T</span>
+                <span class="mkpi-delta positive" id="mkpiInvestDelta">+$0.2T from 2024</span>
+            </div>
+            <div class="mobile-kpi-card" data-metric="coalPhaseout">
+                <div class="mkpi-header">
+                    <div class="mkpi-icon slate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64A9 9 0 0 1 20.77 15M2 12a10 10 0 0 1 18.36-5.64"/><line x1="4" y1="4" x2="20" y2="20" stroke="#ef4444" stroke-width="2.5"/></svg></div>
+                    <span class="mkpi-label">Coal Capacity</span>
+                </div>
+                <span class="mkpi-value" id="mkpiCoal">2,100 GW</span>
+                <span class="mkpi-delta positive" id="mkpiCoalDelta">-30 GW from 2024</span>
+            </div>
+        `;
+    }
+
+    function buildMobileCharts() {
+        const stack = document.getElementById('mobileChartStack');
+        if (!stack) return;
+        stack.innerHTML = `
+            <div class="mobile-chart-card">
+                <h3>Global Energy Mix (TWh)</h3>
+                <canvas id="mChartEnergyMix"></canvas>
+            </div>
+            <div class="mobile-chart-card">
+                <h3>CO₂ Emissions Pathway (Gt)</h3>
+                <canvas id="mChartCO2"></canvas>
+            </div>
+            <div class="mobile-chart-card">
+                <h3>Clean Energy Investment ($T)</h3>
+                <canvas id="mChartInvestment"></canvas>
+            </div>
+        `;
+
+        const years = [];
+        for (let y = 2025; y <= 2050; y++) years.push(y);
+
+        // Create mobile chart instances
+        mChartEnergyMix = new Chart(document.getElementById('mChartEnergyMix'), {
+            type: 'line',
+            data: {
+                labels: years,
+                datasets: [
+                    { label: 'Renewables', data: [], borderColor: chartColors.renewables, backgroundColor: 'rgba(34,197,94,0.2)', fill: true, tension: 0.3, pointRadius: 0 },
+                    { label: 'Nuclear', data: [], borderColor: chartColors.nuclear, backgroundColor: 'rgba(124,58,237,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+                    { label: 'Gas', data: [], borderColor: chartColors.gas, backgroundColor: 'rgba(217,119,6,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+                    { label: 'Oil', data: [], borderColor: chartColors.oil, backgroundColor: 'rgba(161,98,7,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+                    { label: 'Coal', data: [], borderColor: chartColors.coal, backgroundColor: 'rgba(107,114,128,0.15)', fill: true, tension: 0.3, pointRadius: 0 },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+                    y: { stacked: true, grid: { color: '#1e2d4a' }, ticks: { callback: v => (v/1000)+'k' } },
+                },
+                plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 8, padding: 6, font: { size: 9 } } } },
+            },
+        });
+
+        mChartCO2 = new Chart(document.getElementById('mChartCO2'), {
+            type: 'line',
+            data: {
+                labels: years,
+                datasets: [
+                    { label: 'STEPS', data: [], borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                    { label: 'APS', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                    { label: 'NZE', data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', fill: true, tension: 0.3, pointRadius: 0, borderWidth: 2 },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+                    y: { grid: { color: '#1e2d4a' }, ticks: { callback: v => v+' Gt' } },
+                },
+                plugins: { legend: { display: true, position: 'bottom', labels: { boxWidth: 8, padding: 6, font: { size: 9 } } } },
+            },
+        });
+
+        mChartInvestment = new Chart(document.getElementById('mChartInvestment'), {
+            type: 'bar',
+            data: {
+                labels: years,
+                datasets: [{ label: 'Investment', data: [], backgroundColor: [], borderRadius: 2, borderSkipped: false }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { display: false }, ticks: { maxTicksLimit: 6 } },
+                    y: { grid: { color: '#1e2d4a' }, ticks: { callback: v => '$'+v+'T' } },
+                },
+                plugins: { legend: { display: false } },
+            },
+        });
+    }
+
+    function updateMobileKPIs() {
+        if (!isMobile()) return;
+        const kpis = DATA.getGlobalKPIs(currentYear, currentScenario);
+        const prev = currentYear > 2025 ? DATA.getGlobalKPIs(currentYear - 1, currentScenario) : null;
+
+        const el = (id) => document.getElementById(id);
+        if (!el('mkpiRenewable')) return;
+
+        el('mkpiRenewable').textContent = `${kpis.renewableShare}%`;
+        el('mkpiCO2').textContent = `${kpis.co2} Gt`;
+        el('mkpiTemp').textContent = `+${kpis.temperature}°C`;
+        el('mkpiEV').textContent = `${kpis.evShare}%`;
+        el('mkpiInvest').textContent = `$${kpis.cleanInvestment}T`;
+        el('mkpiCoal').textContent = `${kpis.coalCapacity.toLocaleString()} GW`;
+
+        if (prev) {
+            const dRen = +(kpis.renewableShare - prev.renewableShare).toFixed(1);
+            el('mkpiRenewableDelta').textContent = `${dRen >= 0?'+':''}${dRen}% from ${currentYear-1}`;
+            el('mkpiRenewableDelta').className = `mkpi-delta ${dRen >= 0 ? 'positive':'negative'}`;
+
+            const dCo2 = +(kpis.co2 - prev.co2).toFixed(1);
+            el('mkpiCO2Delta').textContent = `${dCo2 >= 0?'+':''}${dCo2} Gt from ${currentYear-1}`;
+            el('mkpiCO2Delta').className = `mkpi-delta ${dCo2 <= 0 ? 'positive':'negative'}`;
+
+            el('mkpiTempDelta').textContent = 'vs pre-industrial';
+            el('mkpiTempDelta').className = `mkpi-delta ${kpis.temperature <= 1.5?'positive':kpis.temperature <= 2?'neutral':'negative'}`;
+
+            const dEV = +(kpis.evShare - prev.evShare).toFixed(1);
+            el('mkpiEVDelta').textContent = `${dEV >= 0?'+':''}${dEV}% from ${currentYear-1}`;
+            el('mkpiEVDelta').className = `mkpi-delta ${dEV >= 0 ? 'positive':'negative'}`;
+
+            const dInv = +(kpis.cleanInvestment - prev.cleanInvestment).toFixed(1);
+            el('mkpiInvestDelta').textContent = `${dInv >= 0?'+':''}$${dInv}T from ${currentYear-1}`;
+            el('mkpiInvestDelta').className = `mkpi-delta ${dInv >= 0 ? 'positive':'negative'}`;
+
+            const dCoal = Math.round(kpis.coalCapacity - prev.coalCapacity);
+            el('mkpiCoalDelta').textContent = `${dCoal >= 0?'+':''}${dCoal.toLocaleString()} GW from ${currentYear-1}`;
+            el('mkpiCoalDelta').className = `mkpi-delta ${dCoal <= 0 ? 'positive':'negative'}`;
+        }
+    }
+
+    function updateMobileCharts() {
+        if (!isMobile() || !mChartEnergyMix) return;
+        const years = [];
+        for (let y = 2025; y <= 2050; y++) years.push(y);
+
+        const mix = DATA.getEnergyMix(currentScenario);
+        mChartEnergyMix.data.datasets[0].data = years.map(y => mix.renewables[y]);
+        mChartEnergyMix.data.datasets[1].data = years.map(y => mix.nuclear[y]);
+        mChartEnergyMix.data.datasets[2].data = years.map(y => mix.gas[y]);
+        mChartEnergyMix.data.datasets[3].data = years.map(y => mix.oil[y]);
+        mChartEnergyMix.data.datasets[4].data = years.map(y => mix.coal[y]);
+        mChartEnergyMix.update('none');
+
+        const co2s = DATA.getCO2Pathway('stated');
+        const co2a = DATA.getCO2Pathway('announced');
+        const co2n = DATA.getCO2Pathway('netzero');
+        mChartCO2.data.datasets[0].data = years.map(y => co2s[y]);
+        mChartCO2.data.datasets[1].data = years.map(y => co2a[y]);
+        mChartCO2.data.datasets[2].data = years.map(y => co2n[y]);
+        const si = {stated:0,announced:1,netzero:2};
+        mChartCO2.data.datasets.forEach((ds,i)=>{
+            ds.borderWidth = i===si[currentScenario]?3:1.5;
+            ds.borderDash = i===si[currentScenario]?[]:[4,3];
+        });
+        mChartCO2.update('none');
+
+        const inv = DATA.getInvestmentPathway(currentScenario);
+        const invData = years.map(y => inv[y]);
+        const invColors = invData.map(v => v >= 4 ? 'rgba(34,197,94,0.7)' : v >= 3 ? 'rgba(132,204,22,0.7)' : v >= 2 ? 'rgba(245,158,11,0.7)' : 'rgba(239,68,68,0.7)');
+        mChartInvestment.data.datasets[0].data = invData;
+        mChartInvestment.data.datasets[0].backgroundColor = invColors;
+        mChartInvestment.update('none');
+    }
+
+    let activeMobilePanel = null;
+
+    function showMobilePanel(panelName) {
+        // Hide all panels
+        document.querySelectorAll('.mobile-panel').forEach(p => p.classList.remove('visible'));
+
+        if (panelName === 'map' || panelName === activeMobilePanel) {
+            activeMobilePanel = null;
+            // Reset active tab to map
+            document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
+            const mapTab = document.querySelector('.mobile-tab[data-panel="map"]');
+            if (mapTab) mapTab.classList.add('active');
+            // Resize map after panel closes
+            setTimeout(() => map && map.invalidateSize(), 100);
+            return;
+        }
+
+        activeMobilePanel = panelName;
+        const panelMap = { kpis: 'mobileKpis', charts: 'mobileCharts', settings: 'mobileSettings' };
+        const panelEl = document.getElementById(panelMap[panelName]);
+        if (panelEl) {
+            panelEl.classList.add('visible');
+            // Update data when showing
+            if (panelName === 'kpis') updateMobileKPIs();
+            if (panelName === 'charts') updateMobileCharts();
+        }
+    }
+
+    function bindMobileEvents() {
+        // Tab bar
+        document.querySelectorAll('.mobile-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.mobile-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                showMobilePanel(tab.dataset.panel);
+            });
+        });
+
+        // Close buttons
+        document.querySelectorAll('.mobile-panel-close').forEach(btn => {
+            btn.addEventListener('click', () => {
+                showMobilePanel('map');
+            });
+        });
+
+        // Mobile scenario select
+        const mScenario = document.getElementById('scenarioSelectMobile');
+        if (mScenario) {
+            mScenario.addEventListener('change', (e) => {
+                currentScenario = e.target.value;
+                // Sync desktop select
+                scenarioSelect.value = currentScenario;
+                update();
+            });
+        }
+
+        // Mobile speed select
+        const mSpeed = document.getElementById('speedSelectMobile');
+        if (mSpeed) {
+            mSpeed.addEventListener('change', (e) => {
+                playSpeed = parseInt(e.target.value);
+                speedSelect.value = e.target.value;
+                if (isPlaying) { stopPlay(); startPlay(); }
+            });
+        }
+
+        // Mobile layer buttons
+        document.querySelectorAll('.mobile-layer-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.mobile-layer-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentLayer = btn.dataset.layer;
+                // Sync desktop layer buttons
+                layerBtns.forEach(b => {
+                    b.classList.toggle('active', b.dataset.layer === currentLayer);
+                });
+                updateChoropleth();
+                updateLegend();
+            });
+        });
+    }
+
     // ===== EVENTS =====
     function bindEvents() {
         yearSlider.addEventListener('input', (e) => {
@@ -690,11 +1028,16 @@
 
         scenarioSelect.addEventListener('change', (e) => {
             currentScenario = e.target.value;
+            // Sync mobile select
+            const mSel = document.getElementById('scenarioSelectMobile');
+            if (mSel) mSel.value = currentScenario;
             update();
         });
 
         speedSelect.addEventListener('change', (e) => {
             playSpeed = parseInt(e.target.value);
+            const mSpd = document.getElementById('speedSelectMobile');
+            if (mSpd) mSpd.value = e.target.value;
             if (isPlaying) {
                 stopPlay();
                 startPlay();
