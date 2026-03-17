@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clean World Dashboard Pro — Global Energy & Climate Simulator 2025–2050</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Top Bar -->
+    <header class="top-bar">
+        <div class="top-bar-left">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="1.5"/>
+                    <path d="M8 16c0-4.4 3.6-8 8-8M16 24c-4.4 0-8-3.6-8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M16 8c4.4 0 8 3.6 8 8s-3.6 8-8 8" stroke="#22c55e" stroke-width="2" stroke-linecap="round"/>
+                    <circle cx="16" cy="16" r="3" fill="#22c55e"/>
+                </svg>
+                <div>
+                    <h1>Clean World Dashboard</h1>
+                    <span class="subtitle">Global Energy & Climate Simulator</span>
+                </div>
+            </div>
+        </div>
+        <div class="top-bar-center">
+            <div class="year-display">
+                <span class="year-label">SIMULATION YEAR</span>
+                <span class="year-value" id="yearDisplay">2025</span>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div class="scenario-selector">
+                <label>Scenario</label>
+                <select id="scenarioSelect">
+                    <option value="stated">Stated Policies (STEPS)</option>
+                    <option value="announced">Announced Pledges (APS)</option>
+                    <option value="netzero" selected>Net Zero 2050 (NZE)</option>
+                </select>
+            </div>
+            <div class="data-source-badge">
+                <span class="pulse"></span>
+                <span>IEA / IRENA / IPCC Data</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <main class="dashboard">
+        <!-- Left Panel — KPI Cards -->
+        <aside class="panel panel-left">
+            <div class="panel-header">
+                <h2>Global Indicators</h2>
+            </div>
+            <div class="kpi-grid">
+                <div class="kpi-card" data-metric="renewableShare">
+                    <div class="kpi-icon green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Renewable Energy Share</span>
+                        <span class="kpi-value" id="kpiRenewable">30%</span>
+                        <span class="kpi-delta positive" id="kpiRenewableDelta">+2.1% from 2024</span>
+                    </div>
+                </div>
+                <div class="kpi-card" data-metric="co2">
+                    <div class="kpi-icon amber">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><circle cx="9" cy="9" r="1" fill="currentColor"/><circle cx="15" cy="9" r="1" fill="currentColor"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">CO₂ Emissions</span>
+                        <span class="kpi-value" id="kpiCO2">36.8 Gt</span>
+                        <span class="kpi-delta negative" id="kpiCO2Delta">-0.4 Gt from 2024</span>
+                    </div>
+                </div>
+                <div class="kpi-card" data-metric="temperature">
+                    <div class="kpi-icon red">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Temperature Anomaly</span>
+                        <span class="kpi-value" id="kpiTemp">+1.45°C</span>
+                        <span class="kpi-delta negative" id="kpiTempDelta">vs pre-industrial</span>
+                    </div>
+                </div>
+                <div class="kpi-card" data-metric="evCapital">
+                    <div class="kpi-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="22" height="12" rx="2"/><path d="M23 10h1v4h-1"/><path d="M7 12h4M9 10v4"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">EV Market Share</span>
+                        <span class="kpi-value" id="kpiEV">22%</span>
+                        <span class="kpi-delta positive" id="kpiEVDelta">+4% from 2024</span>
+                    </div>
+                </div>
+                <div class="kpi-card" data-metric="cleanInvestment">
+                    <div class="kpi-icon emerald">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Clean Energy Investment</span>
+                        <span class="kpi-value" id="kpiInvest">$1.8T</span>
+                        <span class="kpi-delta positive" id="kpiInvestDelta">+$0.2T from 2024</span>
+                    </div>
+                </div>
+                <div class="kpi-card" data-metric="coalPhaseout">
+                    <div class="kpi-icon slate">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64A9 9 0 0 1 20.77 15M2 12a10 10 0 0 1 18.36-5.64"/><path d="M12 2v4M2 12h4"/><line x1="4" y1="4" x2="20" y2="20" stroke="#ef4444" stroke-width="2.5"/></svg>
+                    </div>
+                    <div class="kpi-content">
+                        <span class="kpi-label">Coal Power Capacity</span>
+                        <span class="kpi-value" id="kpiCoal">2,100 GW</span>
+                        <span class="kpi-delta positive" id="kpiCoalDelta">-30 GW from 2024</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Center — Map -->
+        <section class="map-container">
+            <div class="map-overlay-controls">
+                <div class="map-layer-selector">
+                    <button class="map-layer-btn active" data-layer="renewable">Renewables</button>
+                    <button class="map-layer-btn" data-layer="emissions">Emissions</button>
+                    <button class="map-layer-btn" data-layer="temperature">Temperature</button>
+                    <button class="map-layer-btn" data-layer="air">Air Quality</button>
+                </div>
+            </div>
+            <div id="map"></div>
+            <div class="map-legend" id="mapLegend">
+                <h4>Renewable Energy Share (%)</h4>
+                <div class="legend-scale">
+                    <div class="legend-bar"></div>
+                    <div class="legend-labels">
+                        <span>0%</span>
+                        <span>25%</span>
+                        <span>50%</span>
+                        <span>75%</span>
+                        <span>100%</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Panel — Charts -->
+        <aside class="panel panel-right">
+            <div class="panel-header">
+                <h2>Projections</h2>
+            </div>
+            <div class="chart-stack">
+                <div class="chart-card">
+                    <h3>Global Energy Mix (TWh)</h3>
+                    <canvas id="chartEnergyMix"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>CO₂ Emissions Pathway (Gt)</h3>
+                    <canvas id="chartCO2"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>Clean Energy Investment ($T)</h3>
+                    <canvas id="chartInvestment"></canvas>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Timeline Slider -->
+    <footer class="timeline-bar">
+        <div class="timeline-content">
+            <button class="play-btn" id="playBtn">
+                <svg viewBox="0 0 24 24" fill="currentColor" id="playIcon"><polygon points="5,3 19,12 5,21"/></svg>
+                <svg viewBox="0 0 24 24" fill="currentColor" id="pauseIcon" style="display:none"><rect x="5" y="3" width="4" height="18"/><rect x="15" y="3" width="4" height="18"/></svg>
+            </button>
+            <div class="timeline-slider-wrap">
+                <input type="range" id="yearSlider" min="2025" max="2050" value="2025" step="1">
+                <div class="timeline-ticks">
+                    <span>2025</span><span>2030</span><span>2035</span><span>2040</span><span>2045</span><span>2050</span>
+                </div>
+            </div>
+            <div class="playback-speed">
+                <label>Speed</label>
+                <select id="speedSelect">
+                    <option value="1500">0.5x</option>
+                    <option value="800" selected>1x</option>
+                    <option value="400">2x</option>
+                    <option value="200">4x</option>
+                </select>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
