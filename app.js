@@ -29,28 +29,36 @@
     const layerBtns = $$('.map-layer-btn');
 
     // ===== ISO A3 MAPPING =====
-    // Maps GeoJSON property names to our DATA country codes
-    // Natural Earth GeoJSON uses ISO_A3 or ISO_A3_EH
-    const geoJsonToCode = {
-        'USA': 'USA', 'CHN': 'CHN', 'IND': 'IND', 'DEU': 'DEU',
-        'GBR': 'GBR', 'FRA': 'FRA', 'BRA': 'BRA', 'JPN': 'JPN',
-        'CAN': 'CAN', 'AUS': 'AUS', 'KOR': 'KOR', 'RUS': 'RUS',
-        'ZAF': 'ZAF', 'SAU': 'SAU', 'IDN': 'IDN', 'MEX': 'MEX',
-        'TUR': 'TUR', 'NOR': 'NOR', 'SWE': 'SWE', 'DNK': 'DNK',
-        'NLD': 'NLD', 'ESP': 'ESP', 'ITA': 'ITA', 'POL': 'POL',
-        'EGY': 'EGY', 'NGA': 'NGA', 'KEN': 'KEN', 'CHL': 'CHL',
-        'ARG': 'ARG', 'COL': 'COL', 'ARE': 'ARE', 'THA': 'THA',
-        'VNM': 'VNM', 'PHL': 'PHL', 'MYS': 'MYS', 'PAK': 'PAK',
-        'BGD': 'BGD', 'ETH': 'ETH', 'MAR': 'MAR', 'ISR': 'ISR',
-        'NZL': 'NZL', 'PRT': 'PRT', 'GRC': 'GRC', 'AUT': 'AUT',
-        'CHE': 'CHE', 'FIN': 'FIN', 'UKR': 'UKR', 'IRN': 'IRN',
-        'IRQ': 'IRQ', 'PER': 'PER', 'CRI': 'CRI', 'ISL': 'ISL',
-        'URY': 'URY',
-        // Alternate codes used by some GeoJSON sources
-        'US': 'USA', 'CN': 'CHN', 'IN': 'IND', 'DE': 'DEU',
-        'GB': 'GBR', 'FR': 'FRA', 'BR': 'BRA', 'JP': 'JPN',
-        'CA': 'CAN', 'AU': 'AUS', 'KR': 'KOR', 'RU': 'RUS',
-    };
+    // Maps GeoJSON ISO_A3 / ISO_A3_EH property names to our DATA country codes
+    // Build automatically from DATA + known alternate codes
+    const geoJsonToCode = (() => {
+        const map = {};
+        // All our country codes map to themselves
+        for (const code of Object.keys(DATA.countryBase2025)) {
+            map[code] = code;
+        }
+        // Alternate ISO codes used by Natural Earth GeoJSON
+        const alternates = {
+            // ISO_A3 quirks in Natural Earth
+            '-99': null,  // unknown
+            'FLK': null,  // Falklands — not in dataset
+            'ESH': null,  // Western Sahara
+            'ATF': null,  // French Southern Territories
+            'ATA': null,  // Antarctica
+            'GRL': null,  // Greenland
+            'NCL': null,  // New Caledonia
+            'PYF': null,  // French Polynesia
+            'SJM': null,  // Svalbard
+            'XKX': 'KOS', // Kosovo alternate
+            'KOS': 'KOS',
+            'XKO': 'KOS',
+            'SDS': 'SSD', // South Sudan alternate
+            'SOL': 'SOM', // Somaliland → Somalia
+            'PSX': 'PSE', // Palestine alternate
+        };
+        Object.assign(map, alternates);
+        return map;
+    })();
 
     // ===== INIT =====
     function init() {
@@ -117,21 +125,82 @@
             });
     }
 
+    // Build a name→code lookup for fuzzy matching
+    const nameLookup = (() => {
+        const map = {};
+        for (const [code, base] of Object.entries(DATA.countryBase2025)) {
+            map[base.name.toLowerCase()] = code;
+        }
+        // Add common GeoJSON alternate names
+        const aliases = {
+            'united states of america': 'USA', 'united states': 'USA',
+            'republic of korea': 'KOR', 'korea': 'KOR', 'south korea': 'KOR',
+            'dem. rep. korea': 'PRK', "democratic people's republic of korea": 'PRK', 'north korea': 'PRK',
+            'russian federation': 'RUS', 'russia': 'RUS',
+            'iran (islamic republic of)': 'IRN', 'iran, islamic rep.': 'IRN',
+            'viet nam': 'VNM', 'vietnam': 'VNM',
+            "lao people's democratic republic": 'LAO', 'lao pdr': 'LAO',
+            'democratic republic of the congo': 'COD', 'dem. rep. congo': 'COD', 'dr congo': 'COD', 'congo, dem. rep.': 'COD',
+            'republic of the congo': 'COG', 'congo': 'COG',
+            'united republic of tanzania': 'TZA', 'tanzania': 'TZA',
+            'syrian arab republic': 'SYR', 'syria': 'SYR',
+            "côte d'ivoire": 'CIV', 'ivory coast': 'CIV', "cote d'ivoire": 'CIV',
+            'brunei darussalam': 'BRN', 'brunei': 'BRN',
+            'the bahamas': 'BHS', 'bahamas': 'BHS',
+            'timor-leste': 'TLS', 'east timor': 'TLS',
+            'eswatini': 'SWZ', 'swaziland': 'SWZ',
+            'cabo verde': 'CPV', 'cape verde': 'CPV',
+            'czechia': 'CZE', 'czech republic': 'CZE',
+            'north macedonia': 'MKD', 'macedonia': 'MKD', 'the former yugoslav republic of macedonia': 'MKD',
+            'palestine, state of': 'PSE', 'palestine': 'PSE', 'west bank and gaza': 'PSE',
+            'guinea-bissau': 'GNB', 'guinea bissau': 'GNB',
+            'equatorial guinea': 'GNQ',
+            'central african republic': 'CAF', 'central african rep.': 'CAF',
+            'south sudan': 'SSD',
+            'bosnia and herzegovina': 'BIH', 'bosnia and herz.': 'BIH', 'bosnia': 'BIH',
+            'trinidad and tobago': 'TTO',
+            'dominican republic': 'DOM', 'dominican rep.': 'DOM',
+            'el salvador': 'SLV',
+            'saudi arabia': 'SAU',
+            'south africa': 'ZAF',
+            'new zealand': 'NZL',
+            'sri lanka': 'LKA',
+            'costa rica': 'CRI',
+            'burkina faso': 'BFA',
+            'sierra leone': 'SLE',
+            'papua new guinea': 'PNG',
+            'solomon islands': 'SLB',
+            'united kingdom': 'GBR',
+            'united arab emirates': 'ARE', 'uae': 'ARE',
+            'myanmar': 'MMR', 'burma': 'MMR',
+            'somaliland': 'SOM',
+            'taiwan': 'TWN', 'chinese taipei': 'TWN',
+            'kosovo': 'KOS',
+        };
+        for (const [name, code] of Object.entries(aliases)) {
+            map[name.toLowerCase()] = code;
+        }
+        return map;
+    })();
+
     function getCountryCode(feature) {
-        // Try multiple property names used by different GeoJSON sources
         const props = feature.properties;
+        // Try ISO code properties
         const candidates = [
             props.ISO_A3, props.ISO_A3_EH, props.iso_a3,
             props.ISO3, props.iso3, props.ADM0_A3,
-            props.adm0_a3, props.ISO_A2, props.iso_a2,
+            props.adm0_a3, props.ADM0_A3_US,
         ];
         for (const c of candidates) {
-            if (c && geoJsonToCode[c]) return geoJsonToCode[c];
+            if (c && c !== '-99' && geoJsonToCode[c]) return geoJsonToCode[c];
         }
-        // Try matching by name
-        const name = (props.ADMIN || props.name || props.NAME || '').toLowerCase();
-        for (const [code, base] of Object.entries(DATA.countryBase2025)) {
-            if (base.name.toLowerCase() === name) return code;
+        // Fallback: try matching by name
+        const nameFields = [props.ADMIN, props.name, props.NAME, props.NAME_LONG, props.name_long, props.GEOUNIT, props.SOVEREIGNT];
+        for (const n of nameFields) {
+            if (n) {
+                const code = nameLookup[n.toLowerCase()];
+                if (code) return code;
+            }
         }
         return null;
     }
